@@ -51,6 +51,9 @@ setup(
         'setproctitle',
         'cryptography>=2.5',
     ],
+    extras_require={
+        'store': ['berkeleydb>=18.1'],
+    },
     tests_require=['pytest-mock', 'pytest', 'mock', 'pexpect', 'pylint', 'flake8', 'coveralls'],
     package_data={'onionbalance.config_generator': ['data/*']},
     include_package_data=True,

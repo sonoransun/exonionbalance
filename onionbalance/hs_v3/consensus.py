@@ -9,6 +9,7 @@ from stem.descriptor.networkstatus import NetworkStatusDocumentV3
 
 from onionbalance.common import log
 from onionbalance.hs_v3 import tor_node
+from onionbalance.hs_v3 import params
 
 logger = log.get_logger()
 
@@ -195,6 +196,14 @@ class Consensus(object):
         N = b"key-blind" + time_period_number.to_bytes(8, 'big') + period_length.to_bytes(8, 'big')
 
         return hashlib.sha3_256(BLIND_STRING + identity_pubkey + ED25519_BASEPOINT + N).digest()
+
+    def get_hsdir_spread_store(self):
+        """
+        Get hsdir_spread_store from consensus params, defaulting to 4.
+        """
+        if self.consensus and hasattr(self.consensus, 'params') and self.consensus.params:
+            return self.consensus.params.get('hsdir_spread_store', params.HSDIR_SPREAD_STORE)
+        return params.HSDIR_SPREAD_STORE
 
     def get_next_time_period_num(self, valid_after=None):
         return self.get_time_period_num(valid_after) + 1

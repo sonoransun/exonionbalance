@@ -67,19 +67,34 @@ class InstanceV3(onionbalance.common.instance.Instance):
             logger.info("This is the first time we see a descriptor for instance %s!", self.onion_address)
             self.intro_set_modified_timestamp = datetime.datetime.utcnow()
             self.descriptor = new_descriptor
+            self._record_intro_change(0, len(new_descriptor.get_intro_points()))
             return
 
         assert (self.descriptor)
         assert (new_descriptor.intro_set)
 
         # We already have a descriptor but this is a new one. Check the intro points!
+        old_intro_count = len(self.descriptor.get_intro_points())
+        new_intro_count = len(new_descriptor.get_intro_points())
+
         if new_descriptor.intro_set != self.descriptor.intro_set:
             logger.info("We got a new descriptor for instance %s and the intro set changed!", self.onion_address)
             self.intro_set_modified_timestamp = datetime.datetime.utcnow()
+            self._record_intro_change(old_intro_count, new_intro_count)
         else:
             logger.info("We got a new descriptor for instance %s but the intro set did not change.", self.onion_address)
 
         self.descriptor = new_descriptor
+
+    def _record_intro_change(self, old_count, new_count):
+        """Record an intro point change to the persistent store."""
+        try:
+            from onionbalance.hs_v3.onionbalance import my_onionbalance
+            service_addr = my_onionbalance._get_service_for_instance(self)
+            my_onionbalance.store.record_intro_point_change(
+                self.onion_address, service_addr, old_count, new_count)
+        except Exception:
+            pass
 
     def get_intros_for_publish(self):
         """

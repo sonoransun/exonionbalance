@@ -59,6 +59,7 @@ class TestHashRing(unittest.TestCase):
         consensus = DummyConsensus()
         consensus.consensus = mock.Mock()
         consensus.consensus.valid_after = current_time
+        consensus.consensus.params = {}  # empty params, uses default hsdir_spread_store=4
         consensus.get_current_srv = mock.Mock()
         consensus.get_current_srv.return_value = current_srv
         consensus.get_previous_srv = mock.Mock()

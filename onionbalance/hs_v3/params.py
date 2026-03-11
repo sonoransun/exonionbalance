@@ -37,13 +37,39 @@ INSTANCE_DESCRIPTOR_TOO_OLD_TESTNET = 20
 
 # Number of replicas per descriptor
 HSDIR_N_REPLICAS = 2
-# How many uploads per replica
-# [TODO: Get these from the consensus instead of hardcoded]
+# How many uploads per replica (default; can be overridden by consensus param
+# 'hsdir_spread_store' via Consensus.get_hsdir_spread_store())
 HSDIR_SPREAD_STORE = 4
 
 # Max descriptor size (in bytes) (see hs_cache_get_max_descriptor_size() in
 # little-t-tor)
 MAX_DESCRIPTOR_SIZE = 50000
+
+# Dynamic scheduling bounds
+FETCH_INTERVAL_MIN = 2 * 60
+FETCH_INTERVAL_MAX = 20 * 60
+FETCH_INTERVAL_MIN_TESTNET = 5
+FETCH_INTERVAL_MAX_TESTNET = 60
+
+PUBLISH_INTERVAL_MIN = 60
+PUBLISH_INTERVAL_MAX = 15 * 60
+PUBLISH_INTERVAL_MIN_TESTNET = 3
+PUBLISH_INTERVAL_MAX_TESTNET = 30
+
+# How long after startup before scheduling is considered "stable"
+STARTUP_DURATION = 10 * 60
+STARTUP_DURATION_TESTNET = 60
+
+# Minimum signal count before metrics are considered reliable
+MIN_SIGNALS_FOR_STABLE = 10
+MIN_SIGNALS_FOR_STABLE_TESTNET = 5
+
+# Window around consensus rotation where we increase activity
+CONSENSUS_PROXIMITY_WINDOW = 15 * 60
+CONSENSUS_PROXIMITY_WINDOW_TESTNET = 60
+
+# EWMA smoothing factor for dynamic intervals (0 = ignore new, 1 = no smoothing)
+SMOOTHING_FACTOR = 0.3
 
 # Misc parameters
 

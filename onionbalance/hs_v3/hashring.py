@@ -85,11 +85,11 @@ def get_srv_and_time_period(is_first_descriptor):
 
 def _get_hash_ring_for_descriptor(is_first_descriptor):
     """
-    Return a dictionary { <node hsdir index> : Node , .... }
+    Return a sorted list of (hsdir_index, Node) tuples for the hash ring.
     """
     from onionbalance.hs_v3.onionbalance import my_onionbalance
 
-    node_hash_ring = {}
+    node_hash_ring = []
 
     srv, time_period_num = get_srv_and_time_period(is_first_descriptor)
     logger.info("Using srv %s and TP#%s (%s descriptor)",
@@ -104,8 +104,9 @@ def _get_hash_ring_for_descriptor(is_first_descriptor):
             continue
 
         logger.debug("%s: Node: %s,  index: %s", is_first_descriptor, node.get_hex_fingerprint(), hsdir_index.hex())
-        node_hash_ring[hsdir_index] = node
+        node_hash_ring.append((hsdir_index, node))
 
+    node_hash_ring.sort(key=lambda entry: entry[0])
     return node_hash_ring
 
 
@@ -153,15 +154,15 @@ def get_responsible_hsdirs(blinded_pubkey, is_first_descriptor):
 
     responsible_hsdirs = []
 
-    # TODO: Improve representation of hash ring here... No need to go
-    # between list and dictionary...
+    # Get hsdir_spread_store from consensus (defaults to 4)
+    hsdir_spread_store = my_onionbalance.consensus.get_hsdir_spread_store()
 
-    # dictionary { <node hsdir index> : Node , .... }
+    # Sorted list of (hsdir_index, Node) tuples
     node_hash_ring = _get_hash_ring_for_descriptor(is_first_descriptor)
     if not node_hash_ring:
         raise EmptyHashRing
 
-    sorted_hash_ring_list = sorted(list(node_hash_ring.keys()))
+    sorted_keys = [entry[0] for entry in node_hash_ring]
 
     logger.info("Initialized hash ring of size %d (blinded key: %s)",
                 len(node_hash_ring), base64.b64encode(blinded_pubkey))
@@ -173,20 +174,20 @@ def get_responsible_hsdirs(blinded_pubkey, is_first_descriptor):
         hidden_service_index = _get_hidden_service_index(blinded_pubkey, replica_num, is_first_descriptor)
 
         # Find position of descriptor ID in the HSDir list
-        index = bisect.bisect_left(sorted_hash_ring_list, hidden_service_index)
+        index = bisect.bisect_left(sorted_keys, hidden_service_index)
 
         logger.info("\t Tried with HS index %s got position %d", hidden_service_index.hex(), index)
 
-        while len(replica_store_hsdirs) < params.HSDIR_SPREAD_STORE:
+        while len(replica_store_hsdirs) < hsdir_spread_store:
             try:
-                hsdir_key = sorted_hash_ring_list[index]
+                hsdir_key = sorted_keys[index]
+                hsdir_node = node_hash_ring[index][1]
                 index += 1
             except IndexError:
                 # Wrap around when we reach the end of the HSDir list
                 index = 0
-                hsdir_key = sorted_hash_ring_list[index]
-
-            hsdir_node = node_hash_ring[hsdir_key]
+                hsdir_key = sorted_keys[index]
+                hsdir_node = node_hash_ring[index][1]
 
             # Check if we have already added this node to this
             # replica. This should never happen on the real network but
@@ -211,9 +212,9 @@ def get_responsible_hsdirs(blinded_pubkey, is_first_descriptor):
     # Do a sanity check
     if my_onionbalance.is_testnet:
         # If we are on chutney it's normal to not have enough nodes to populate the hashring
-        assert (len(responsible_hsdirs) <= params.HSDIR_N_REPLICAS * params.HSDIR_SPREAD_STORE)
+        assert (len(responsible_hsdirs) <= params.HSDIR_N_REPLICAS * hsdir_spread_store)
     else:
-        if (len(responsible_hsdirs) != params.HSDIR_N_REPLICAS * params.HSDIR_SPREAD_STORE):
+        if (len(responsible_hsdirs) != params.HSDIR_N_REPLICAS * hsdir_spread_store):
             logger.critical("Got the wrong number of responsible HSDirs: %d. Aborting", len(responsible_hsdirs))
             raise EmptyHashRing
 

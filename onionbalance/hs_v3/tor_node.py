@@ -1,8 +1,7 @@
-import base64
-
 import hashlib
 
 from onionbalance.common import log
+from onionbalance.common import util
 
 logger = log.get_logger()
 
@@ -58,13 +57,10 @@ class Node(object):
             raise NoEd25519Identity
 
         # In stem the ed25519 identity is a base64 string and we need to add
-        # the missing padding so that the python base64 module can successfuly
+        # the missing padding so that the python base64 module can successfully
         # decode it.
-        # TODO: Abstract this into its own function...
-        ed25519_node_identity_b64 = self.microdescriptor.identifiers['ed25519']
-        missing_padding = len(ed25519_node_identity_b64) % 4
-        ed25519_node_identity_b64 += '=' * missing_padding
-        ed25519_node_identity = base64.b64decode(ed25519_node_identity_b64)
+        ed25519_node_identity = util.b64decode_with_padding(
+            self.microdescriptor.identifiers['ed25519'])
 
         period_num_int_8 = period_num.to_bytes(8, 'big')
         period_length = my_onionbalance.consensus.get_time_period_length()

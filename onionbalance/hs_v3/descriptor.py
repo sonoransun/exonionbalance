@@ -57,12 +57,12 @@ class IntroductionPointSetV3(intro_point_set.IntroductionPointSet):
         Compares two IntroductionPointSetV3 objects and returns True
         if they have the same introduction points in them.
         """
-        # XXX we are currently using onion_key_raw as the identifier for the
-        # intro point. is there a better thing to use?
+        # We use onion_key_raw (the ntor onion key) as the identifier for intro
+        # points because it is unique per introduction point and does not change
+        # during recertification, unlike auth_key_cert which gets re-signed.
         intro_set_1 = set(ip.onion_key_raw for ip in other.get_intro_points_flat())
         intro_set_2 = set(ip.onion_key_raw for ip in self.get_intro_points_flat())
 
-        # TODO: unittests
         return intro_set_1 == intro_set_2
 
 

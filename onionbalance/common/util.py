@@ -1,3 +1,4 @@
+import base64
 import sys
 import time
 import os
@@ -9,6 +10,12 @@ from stem.control import Controller
 from onionbalance.common import log
 
 logger = log.get_logger()
+
+
+def b64decode_with_padding(b64_string):
+    """Decode a base64 string, adding any missing padding characters."""
+    missing = (4 - len(b64_string) % 4) % 4
+    return base64.b64decode(b64_string + '=' * missing)
 
 
 def read_config_data_from_file(config_path):

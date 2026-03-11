@@ -34,6 +34,11 @@ class SignalHandler(object):
         Disconnect from control port and cleanup the status socket
         """
         logger.info("Signal %d received, exiting", signum)
+        # Close persistent store before exit
+        try:
+            onionbalance_v3.my_onionbalance.store.close()
+        except Exception:
+            pass
         self._tor_controller.close()
         if self._status_socket:
             self._status_socket.close()

@@ -356,6 +356,18 @@ class OnionbalanceService(object):
         else:
             self.second_descriptor = desc
 
+        # Record publish event and save service state
+        try:
+            from onionbalance.hs_v3.store import EventType
+            my_onionbalance.store.record_descriptor_event(
+                EventType.PUBLISH_ATTEMPTED,
+                service_address=self.onion_address,
+                intro_point_count=len(desc.get_intro_points()),
+                is_first_desc=is_first_desc)
+            my_onionbalance.store.save_service_state(self)
+        except Exception:
+            pass
+
     def _upload_descriptor(self, controller, ob_desc, hsdirs):
         """
         Convenience method to upload a descriptor

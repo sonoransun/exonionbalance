@@ -14,6 +14,7 @@ from onionbalance.hs_v3 import manager
 from onionbalance.hs_v3 import stem_controller
 from onionbalance.hs_v3 import service as ob_service
 from onionbalance.hs_v3 import consensus as ob_consensus
+from onionbalance.hs_v3.store import OBStore, NullStore, EventType
 
 logger = log.get_logger()
 
@@ -34,6 +35,9 @@ class Onionbalance(object):
         # True if this onionbalance operates in a testnet (e.g. chutney)
         self.is_testnet = False
 
+        # Persistent store (initialized in init_subsystems)
+        self.store = NullStore()
+
     def init_subsystems(self, args):
         """
         Initialize subsystems (this is resource intensive)
@@ -50,8 +54,20 @@ class Onionbalance(object):
         self.controller = stem_controller.StemController(address=args.ip, port=args.port, socket=args.socket)
         self.consensus = ob_consensus.Consensus()
 
+        # Initialize persistent store
+        store_dir = os.environ.get('ONIONBALANCE_STORE_DIR',
+                                   self.config_data.get('store-dir'))
+        try:
+            self.store = OBStore(store_dir)
+        except Exception:
+            logger.warning("Failed to initialize persistent store, using null store")
+            self.store = NullStore()
+
         # Initialize our service
         self.services = self.initialize_services_from_config_data()
+
+        # Restore state from persistent store if available
+        self._restore_state_from_store()
 
         # Catch interesting events (like receiving descriptors etc.)
         self.controller.add_event_listeners()
@@ -105,11 +121,17 @@ class Onionbalance(object):
 
         return config_data
 
+    def _restore_state_from_store(self):
+        """Restore instance and service state from persistent store on startup."""
+        for service in self.services:
+            for instance in service.instances:
+                state = self.store.load_instance_state(instance.onion_address)  # pylint: disable=assignment-from-none
+                if state:
+                    logger.info("Restored state for instance %s from persistent store",
+                                instance.onion_address)
+
     def fetch_instance_descriptors(self):
         logger.info("[*] fetch_instance_descriptors() called [*]")
-
-        # TODO: Don't do this here. Instead do it on a specialized function
-        self.controller.mark_tor_as_active()
 
         if not self.consensus.is_live():
             logger.warning("No live consensus. Waiting before fetching descriptors...")
@@ -117,8 +139,27 @@ class Onionbalance(object):
 
         all_instances = self._get_all_instances()
 
+        # Record fetch request events
+        for instance in all_instances:
+            try:
+                service_addr = self._get_service_for_instance(instance)
+                self.store.record_descriptor_event(
+                    EventType.FETCH_REQUESTED,
+                    service_address=service_addr,
+                    instance_address=instance.onion_address)
+            except Exception:
+                pass
+
         onionbalance.common.instance.helper_fetch_all_instance_descriptors(self.controller.controller,
                                                                            all_instances)
+
+    def _get_service_for_instance(self, instance):
+        """Return the service address that owns this instance, or empty string."""
+        for service in self.services:
+            for inst in service.instances:
+                if inst.onion_address == instance.onion_address:
+                    return service.onion_address
+        return ''
 
     def handle_new_desc_content_event(self, desc_content_event):
         """
@@ -145,6 +186,17 @@ class Onionbalance(object):
         for instance in self._get_all_instances():
             if instance.onion_address == onion_address:
                 instance.register_descriptor(descriptor_text, onion_address)
+                # Record successful fetch and save instance state
+                try:
+                    service_addr = self._get_service_for_instance(instance)
+                    self.store.record_descriptor_event(
+                        EventType.FETCH_RECEIVED,
+                        service_address=service_addr,
+                        instance_address=instance.onion_address,
+                        descriptor_size=len(descriptor_text))
+                    self.store.save_instance_state(instance, service_addr)
+                except Exception:
+                    pass
 
     def publish_all_descriptors(self):
         """
@@ -178,6 +230,10 @@ class Onionbalance(object):
         if status_event.action == "CONSENSUS_ARRIVED":
             logger.info("Received new consensus!")
             self.consensus.refresh()
+            try:
+                self.store.record_consensus_event(self.consensus)
+            except Exception:
+                pass
             # Call all callbacks in case we just got a live consensus
             my_onionbalance.publish_all_descriptors()
             my_onionbalance.fetch_instance_descriptors()
@@ -208,13 +264,35 @@ class Onionbalance(object):
             pass  # We already log in HS_DESC_CONTENT so no need to do it here too
         elif action == "UPLOADED":
             logger.debug("Successfully uploaded descriptor for %s to %s", desc_event.address, desc_event.directory)
+            try:
+                self.store.record_descriptor_event(
+                    EventType.PUBLISH_UPLOADED,
+                    service_address=desc_event.address,
+                    hsdir_fingerprint=desc_event.directory)
+            except Exception:
+                pass
         elif action == "FAILED":
             if self._address_is_instance(desc_event.address):
                 logger.info("Descriptor fetch failed for instance %s from %s (%s)",
                             desc_event.address, desc_event.directory, desc_event.reason)
+                try:
+                    self.store.record_descriptor_event(
+                        EventType.FETCH_FAILED,
+                        service_address='',
+                        instance_address=desc_event.address,
+                        error_reason=desc_event.reason)
+                except Exception:
+                    pass
             elif self._address_is_frontend(desc_event.address):
                 logger.warning("Descriptor upload failed for frontend %s to %s (%s)",
                                desc_event.address, desc_event.directory, desc_event.reason)
+                try:
+                    self.store.record_descriptor_event(
+                        EventType.PUBLISH_FAILED,
+                        service_address=desc_event.address,
+                        error_reason=desc_event.reason)
+                except Exception:
+                    pass
             else:
                 logger.warning("Descriptor action failed for unknown service %s to %s (%s)",
                                desc_event.address, desc_event.directory, desc_event.reason)

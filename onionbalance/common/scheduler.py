@@ -62,6 +62,37 @@ class Job(object):
                                ', '.join(args + kwargs))
 
 
+class DynamicJob(Job):
+    """
+    A job whose interval is recomputed dynamically after each run
+    by consulting an IntervalPolicy with data from the persistent store.
+    """
+
+    def __init__(self, interval_policy, store, job_func, *job_args, **job_kwargs):
+        self.interval_policy = interval_policy
+        self.store = store
+        super().__init__(interval_policy.base_interval, job_func, *job_args, **job_kwargs)
+
+    def run(self, override_run_time=None):
+        """Run job, then recompute interval before rescheduling."""
+        ret = self.job_func()
+
+        # Recompute the dynamic interval from persistent signal data
+        try:
+            self.interval = self.interval_policy.get_interval(self.store)
+            logger.debug("Dynamic job %s: next interval = %.1f seconds",
+                         self.job_func.__name__, self.interval)
+        except Exception:
+            logger.debug("Failed to compute dynamic interval, keeping %.1f",
+                         self.interval, exc_info=True)
+
+        if override_run_time:
+            self.planned_run_time = time.time()
+        self.planned_run_time += self.interval
+
+        return ret
+
+
 def add_job(interval, function, *job_args, **job_kwargs):
     """
     Add a job to be executed at regular intervals
@@ -69,6 +100,15 @@ def add_job(interval, function, *job_args, **job_kwargs):
     The `interval` value is in seconds, starting from now.
     """
     job = Job(interval, function, *job_args, **job_kwargs)
+    jobs.append(job)
+
+
+def add_dynamic_job(interval_policy, store, function, *job_args, **job_kwargs):
+    """
+    Add a dynamically-scheduled job whose interval adapts based on
+    persistent signal data.
+    """
+    job = DynamicJob(interval_policy, store, function, *job_args, **job_kwargs)
     jobs.append(job)
 
 
